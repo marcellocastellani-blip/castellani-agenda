@@ -2,21 +2,22 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>FOCO — Planner</title>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <style>
+    html { touch-action: manipulation; -webkit-text-size-adjust: 100%; }
     html, body, #root { margin: 0; padding: 0; min-height: 100vh; }
-    body { background: #f0ebe1; }
+    body { background: #f0ebe1; overscroll-behavior: none; }
+    input, textarea, select { font-size: 16px !important; }
   </style>
 </head>
 <body>
   <div id="root"></div>
 
   <script>
-    // Persistencia local
     window.storage = {
       get: async (k) => {
         const v = localStorage.getItem(k);
@@ -37,9 +38,10 @@ const DAYS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "
 const DAYS_SHORT = ["LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB", "DOM"];
 
 const DEFAULT_PROJECTS = [
-  { id: "p1", name: "Ohne Rotkohl", color: "#c9a84c" },
-  { id: "p2", name: "Arte & Pintura", color: "#6eb5a0" },
-  { id: "p3", name: "Personal", color: "#c47070" },
+  { id: "p1", name: "Pintura", color: "#c9a84c" },
+  { id: "p2", name: "Música", color: "#6eb5a0" },
+  { id: "p3", name: "Casa", color: "#c47070" },
+  { id: "p4", name: "Amistades", color: "#8b7fc7" },
 ];
 
 const genId = () => Math.random().toString(36).substr(2, 9);
@@ -69,13 +71,33 @@ function getCurrentWeekDates() {
   });
 }
 
+const ymd = (ts) => {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+};
+
+const formatTime = (ts) => {
+  const d = new Date(ts);
+  return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+};
+
+const formatDateLabel = (ymdStr) => {
+  const today = ymd(Date.now());
+  const yest = ymd(Date.now() - 86400000);
+  if (ymdStr === today) return "Hoy";
+  if (ymdStr === yest) return "Ayer";
+  const [y,m,d] = ymdStr.split("-").map(Number);
+  const date = new Date(y, m-1, d);
+  return date.toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" });
+};
+
 const CSS = `
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 ::-webkit-scrollbar{width:4px;height:4px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:rgba(0,0,0,0.12);border-radius:2px}
 button{cursor:pointer;border:none;background:none;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:inherit;color:inherit;padding:0}
-input,textarea,select{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:13px;color:#1c1814}
+input,textarea,select{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#1c1814}
 select option{background:#f5f0e8}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 @keyframes slideUp{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}
@@ -186,7 +208,7 @@ function Modal({ modal, projects, onAddTask, onUpdateTask, onDeleteTask, onAddPr
     padding: "10px 14px",
     color: TEXT,
     outline: "none",
-    fontSize: 13,
+    fontSize: 16,
     fontFamily: F,
     fontWeight: 400,
   };
@@ -282,11 +304,183 @@ function Modal({ modal, projects, onAddTask, onUpdateTask, onDeleteTask, onAddPr
   );
 }
 
+const EVENT_LABELS = {
+  task_created: "creaste",
+  task_done: "completaste",
+  task_undone: "reabriste",
+  task_deleted: "eliminaste",
+  task_updated: "editaste",
+  focus_on: "pusiste en foco",
+  focus_off: "quitaste del foco",
+  project_created: "creaste proyecto",
+};
+
+const EVENT_ICONS = {
+  task_created: "+",
+  task_done: "✓",
+  task_undone: "↺",
+  task_deleted: "×",
+  task_updated: "✎",
+  focus_on: "★",
+  focus_off: "☆",
+  project_created: "◆",
+};
+
+function HistoryView({ history, projects }) {
+  if (!history.length) return (
+    <div style={{ background: CARD, backdropFilter: "blur(14px)", border: "1px dashed rgba(0,0,0,0.1)", borderRadius: 18, padding: "28px 20px", color: TEXT_MUTED, fontSize: 12, textAlign: "center", fontFamily: F }}>
+      Sin actividad aún — crea o completa tareas para ver tu historial
+    </div>
+  );
+  const grouped = {};
+  history.forEach(ev => {
+    const k = ymd(ev.ts);
+    if (!grouped[k]) grouped[k] = [];
+    grouped[k].push(ev);
+  });
+  const keys = Object.keys(grouped).sort().reverse();
+  return (
+    <div>
+      {keys.map(k => (
+        <section key={k} style={{ marginBottom: 28 }}>
+          <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.14em", color: TEXT, fontFamily: F, textTransform: "uppercase", marginBottom: 12 }}>
+            {formatDateLabel(k)} <span style={{ color: TEXT_MUTED, fontWeight: 500, marginLeft: 8 }}>{grouped[k].length} eventos</span>
+          </p>
+          {grouped[k].map(ev => {
+            const proj = projects.find(p => p.id === ev.projectId);
+            const color = proj?.color || ACCENT;
+            return (
+              <div key={ev.id} style={{ background: CARD, backdropFilter: "blur(14px)", border: "1px solid rgba(255,255,255,0.88)", borderRadius: 14, padding: "10px 14px", marginBottom: 6, display: "flex", alignItems: "center", gap: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+                <div style={{ width: 28, height: 28, borderRadius: "50%", background: color + "25", color: color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, flexShrink: 0 }}>
+                  {EVENT_ICONS[ev.type] || "•"}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 13, color: TEXT, fontFamily: F, fontWeight: 400, lineHeight: 1.3 }}>
+                    <span style={{ color: TEXT_SUB }}>{EVENT_LABELS[ev.type] || ev.type}</span>{" "}
+                    <span style={{ fontWeight: 500 }}>{ev.label}</span>
+                  </p>
+                  {proj && (
+                    <p style={{ fontSize: 10, color: TEXT_MUTED, fontFamily: F, marginTop: 2, letterSpacing: "0.04em" }}>{proj.name}</p>
+                  )}
+                </div>
+                <span style={{ fontSize: 10, color: TEXT_MUTED, fontFamily: F, fontWeight: 500, flexShrink: 0 }}>{formatTime(ev.ts)}</span>
+              </div>
+            );
+          })}
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function StatsView({ history, tasks, projects }) {
+  const doneEvents = history.filter(h => h.type === "task_done");
+  const totalDone = tasks.filter(t => t.status === "done").length;
+
+  // Per-project activity (all events related to that project)
+  const perProject = projects.map(p => {
+    const events = history.filter(h => h.projectId === p.id).length;
+    const done = tasks.filter(t => t.projectId === p.id && t.status === "done").length;
+    const total = tasks.filter(t => t.projectId === p.id).length;
+    return { ...p, events, done, total };
+  });
+  const maxEvents = Math.max(1, ...perProject.map(p => p.events));
+
+  // Last 7 days "tasks done"
+  const today = new Date(); today.setHours(0,0,0,0);
+  const last7 = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(today);
+    d.setDate(d.getDate() - (6 - i));
+    const key = ymd(d.getTime());
+    const count = doneEvents.filter(ev => ymd(ev.ts) === key).length;
+    return { date: d, key, count, label: DAYS_SHORT[d.getDay() === 0 ? 6 : d.getDay() - 1] };
+  });
+  const max7 = Math.max(1, ...last7.map(d => d.count));
+
+  // Streak
+  let streak = 0;
+  for (let i = 0; i < 365; i++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const key = ymd(d.getTime());
+    if (doneEvents.some(ev => ymd(ev.ts) === key)) streak++;
+    else if (i > 0) break;
+    else break;
+  }
+
+  const activeDays = new Set(doneEvents.map(ev => ymd(ev.ts))).size;
+  const topProject = [...perProject].sort((a,b) => b.events - a.events)[0];
+
+  const StatBox = ({ n, label, color }) => (
+    <div style={{ background: CARD, backdropFilter: "blur(14px)", border: "1px solid rgba(255,255,255,0.9)", borderRadius: 18, padding: "20px 18px", flex: 1, minWidth: 130, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+      <p style={{ fontSize: 42, fontWeight: 800, color: color || TEXT, fontFamily: F, letterSpacing: "-0.03em", lineHeight: 1 }}>{n}</p>
+      <p style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.14em", color: TEXT_MUTED, fontFamily: F, textTransform: "uppercase", marginTop: 8 }}>{label}</p>
+    </div>
+  );
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 10, marginBottom: 28, flexWrap: "wrap" }}>
+        <StatBox n={totalDone} label="Completadas" color={ACCENT} />
+        <StatBox n={streak} label="Racha días" color="#c47070" />
+        <StatBox n={activeDays} label="Días activos" color="#6eb5a0" />
+      </div>
+
+      <section style={{ marginBottom: 32 }}>
+        <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.16em", color: TEXT, fontFamily: F, textTransform: "uppercase", marginBottom: 14 }}>DÓNDE INVIERTES TU TIEMPO</p>
+        <div style={{ background: CARD, backdropFilter: "blur(14px)", border: "1px solid rgba(255,255,255,0.9)", borderRadius: 18, padding: "20px 20px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+          {perProject.map(p => {
+            const pct = maxEvents > 0 ? (p.events / maxEvents) * 100 : 0;
+            return (
+              <div key={p.id} style={{ marginBottom: 14 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: TEXT, fontFamily: F, letterSpacing: "0.04em" }}>{p.name}</span>
+                  <span style={{ fontSize: 10, color: TEXT_MUTED, fontFamily: F, fontWeight: 500 }}>
+                    {p.events} acciones · {p.done}/{p.total} completadas
+                  </span>
+                </div>
+                <div style={{ height: 8, background: "rgba(0,0,0,0.05)", borderRadius: 4, overflow: "hidden" }}>
+                  <div style={{ width: `${pct}%`, height: "100%", background: p.color, borderRadius: 4, transition: "width 0.5s" }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {topProject && topProject.events > 0 && (
+          <p style={{ fontSize: 11, color: TEXT_MUTED, fontFamily: F, marginTop: 10, fontStyle: "italic" }}>
+            Más activo en: <span style={{ color: topProject.color, fontWeight: 600, fontStyle: "normal" }}>{topProject.name}</span>
+          </p>
+        )}
+      </section>
+
+      <section style={{ marginBottom: 32 }}>
+        <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.16em", color: TEXT, fontFamily: F, textTransform: "uppercase", marginBottom: 14 }}>ÚLTIMOS 7 DÍAS — COMPLETADAS</p>
+        <div style={{ background: CARD, backdropFilter: "blur(14px)", border: "1px solid rgba(255,255,255,0.9)", borderRadius: 18, padding: "24px 20px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+          <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 8, height: 140 }}>
+            {last7.map((d, i) => {
+              const h = d.count === 0 ? 6 : Math.max(10, (d.count / max7) * 120);
+              const isToday = i === last7.length - 1;
+              return (
+                <div key={d.key} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 11, color: d.count > 0 ? TEXT : TEXT_MUTED, fontFamily: F, fontWeight: 700 }}>{d.count || "—"}</span>
+                  <div style={{ width: "100%", height: h, background: isToday ? ACCENT : d.count > 0 ? DARK : "rgba(0,0,0,0.08)", borderRadius: 8, transition: "height 0.4s" }} />
+                  <span style={{ fontSize: 9, color: isToday ? ACCENT : TEXT_MUTED, fontFamily: F, fontWeight: 700, letterSpacing: "0.12em" }}>{d.label}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function App() {
   const [projects, setProjects] = useState(DEFAULT_PROJECTS);
   const [tasks, setTasks] = useState([]);
   const [activeProject, setActiveProject] = useState("p1");
   const [focusIds, setFocusIds] = useState([]);
+  const [history, setHistory] = useState([]);
   const [modal, setModal] = useState(null);
   const [expandedTask, setExpandedTask] = useState(null);
   const [loaded, setLoaded] = useState(false);
@@ -295,13 +489,14 @@ function App() {
   useEffect(() => {
     (async () => {
       try {
-        const r = await window.storage.get("foco-planner-v2");
+        const r = await window.storage.get("foco-planner-v3");
         if (r) {
           const d = JSON.parse(r.value);
           if (d.projects?.length) setProjects(d.projects);
           if (d.tasks) setTasks(d.tasks);
           if (d.focusIds) setFocusIds(d.focusIds);
           if (d.activeProject) setActiveProject(d.activeProject);
+          if (d.history) setHistory(d.history);
         }
       } catch {}
       setLoaded(true);
@@ -312,21 +507,61 @@ function App() {
     if (!loaded) return;
     (async () => {
       try {
-        await window.storage.set("foco-planner-v2", JSON.stringify({ projects, tasks, focusIds, activeProject }));
+        await window.storage.set("foco-planner-v3", JSON.stringify({ projects, tasks, focusIds, activeProject, history }));
       } catch {}
     })();
-  }, [projects, tasks, focusIds, activeProject, loaded]);
+  }, [projects, tasks, focusIds, activeProject, history, loaded]);
+
+  const log = (type, label, projectId) => {
+    setHistory(prev => [{ id: genId(), ts: Date.now(), type, label, projectId }, ...prev].slice(0, 1000));
+  };
 
   const addTask = (title, notes, status, projectId, weekDay) => {
     setTasks(prev => [...prev, { id: genId(), title, notes, status, projectId, weekDay: weekDay ?? null, createdAt: Date.now() }]);
+    log("task_created", title, projectId);
+    if (status === "done") log("task_done", title, projectId);
     setModal(null);
   };
-  const updateTask = (id, u) => setTasks(prev => prev.map(t => t.id === id ? { ...t, ...u } : t));
-  const deleteTask = (id) => { setTasks(p => p.filter(t => t.id !== id)); setFocusIds(p => p.filter(f => f !== id)); if (expandedTask === id) setExpandedTask(null); setModal(null); };
+  const updateTask = (id, u) => {
+    const old = tasks.find(t => t.id === id);
+    setTasks(prev => prev.map(t => t.id === id ? { ...t, ...u } : t));
+    if (old) {
+      const newStatus = u.status !== undefined ? u.status : old.status;
+      const newTitle = u.title !== undefined ? u.title : old.title;
+      const newProjectId = u.projectId !== undefined ? u.projectId : old.projectId;
+      if (u.status !== undefined && u.status !== old.status) {
+        if (u.status === "done") log("task_done", newTitle, newProjectId);
+        else if (old.status === "done") log("task_undone", newTitle, newProjectId);
+      } else {
+        log("task_updated", newTitle, newProjectId);
+      }
+    }
+  };
+  const deleteTask = (id) => {
+    const t = tasks.find(x => x.id === id);
+    if (t) log("task_deleted", t.title, t.projectId);
+    setTasks(p => p.filter(t => t.id !== id));
+    setFocusIds(p => p.filter(f => f !== id));
+    if (expandedTask === id) setExpandedTask(null);
+    setModal(null);
+  };
   const advanceStatus = (task) => { const i = STATUSES.indexOf(task.status); if (i < STATUSES.length - 1) updateTask(task.id, { status: STATUSES[i + 1] }); };
   const regressStatus = (task) => { const i = STATUSES.indexOf(task.status); if (i > 0) updateTask(task.id, { status: STATUSES[i - 1] }); };
-  const toggleFocus = (id) => setFocusIds(prev => prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id]);
-  const addProject = (name, color) => { const p = { id: genId(), name, color }; setProjects(prev => [...prev, p]); setActiveProject(p.id); setModal(null); };
+  const toggleFocus = (id) => {
+    const task = tasks.find(t => t.id === id);
+    setFocusIds(prev => {
+      const isNow = prev.includes(id);
+      if (task) log(isNow ? "focus_off" : "focus_on", task.title, task.projectId);
+      return isNow ? prev.filter(f => f !== id) : [...prev, id];
+    });
+  };
+  const addProject = (name, color) => {
+    const p = { id: genId(), name, color };
+    setProjects(prev => [...prev, p]);
+    setActiveProject(p.id);
+    log("project_created", name, p.id);
+    setModal(null);
+  };
   const updateProject = (id, u) => { setProjects(p => p.map(x => x.id === id ? { ...x, ...u } : x)); setModal(null); };
   const deleteProject = (id) => {
     const rest = projects.filter(p => p.id !== id);
@@ -384,13 +619,13 @@ function App() {
             </div>
           </header>
 
-          <nav style={{ marginBottom: 44 }}>
+          <nav style={{ marginBottom: 44, overflowX: "auto" }}>
             <div style={{ display: "inline-flex", background: "rgba(255,255,255,0.72)", borderRadius: 50, padding: 4, border: "1px solid rgba(255,255,255,0.95)", backdropFilter: "blur(14px)", boxShadow: "0 2px 16px rgba(0,0,0,0.06)" }}>
-              {[["hoy", "Hoy"], ["semana", "Semana"], ["proyectos", "Proyectos"]].map(([v, label]) => (
+              {[["hoy", "Hoy"], ["semana", "Semana"], ["proyectos", "Proyectos"], ["historial", "Historial"], ["stats", "Stats"]].map(([v, label]) => (
                 <button
                   key={v}
                   onClick={() => setView(v)}
-                  style={{ fontFamily: F, fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", color: view === v ? "#fff" : TEXT_SUB, padding: "9px 24px", borderRadius: 50, background: view === v ? DARK : "transparent", transition: "all 0.25s", border: "none" }}
+                  style={{ fontFamily: F, fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", color: view === v ? "#fff" : TEXT_SUB, padding: "9px 22px", borderRadius: 50, background: view === v ? DARK : "transparent", transition: "all 0.25s", border: "none", whiteSpace: "nowrap" }}
                 >
                   {label}
                 </button>
@@ -520,7 +755,7 @@ function App() {
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28 }}>
                 <h2 style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.18em", color: TEXT, fontFamily: F, textTransform: "uppercase" }}>PROYECTOS</h2>
-                {projects.length < 4 && (
+                {projects.length < 6 && (
                   <button
                     onClick={() => setModal({ mode: "addProject" })}
                     style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", color: "#fff", padding: "9px 18px", borderRadius: 50, fontFamily: F, textTransform: "uppercase", background: DARK }}
@@ -619,6 +854,26 @@ function App() {
                   );
                 })}
               </div>
+            </div>
+          )}
+
+          {view === "historial" && (
+            <div>
+              <div style={{ marginBottom: 28 }}>
+                <h2 style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.18em", color: TEXT, fontFamily: F, textTransform: "uppercase" }}>HISTORIAL DE ACTIVIDAD</h2>
+                <p style={{ fontSize: 11, color: TEXT_MUTED, marginTop: 4, fontFamily: F }}>Todo lo que has hecho, ordenado por día</p>
+              </div>
+              <HistoryView history={history} projects={projects} />
+            </div>
+          )}
+
+          {view === "stats" && (
+            <div>
+              <div style={{ marginBottom: 28 }}>
+                <h2 style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.18em", color: TEXT, fontFamily: F, textTransform: "uppercase" }}>ESTADÍSTICAS</h2>
+                <p style={{ fontSize: 11, color: TEXT_MUTED, marginTop: 4, fontFamily: F }}>Cómo se está distribuyendo tu foco</p>
+              </div>
+              <StatsView history={history} tasks={tasks} projects={projects} />
             </div>
           )}
 
